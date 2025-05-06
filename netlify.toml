@@ -1,9 +1,6 @@
 [build]
   command = "npm run build"
   publish = "build"
-
-[dev]
+  base = "/"
   functions = "netlify/functions"
-
-[build.environment]
-  FAUNADB_SECRET = "<TU_FAUNADB_SECRET>"
+  environment = { FAUNADB_SECRET = "430223672511299650" }
