@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tienda de Materiales de Construcción</title>
   <style>
     body {
@@ -113,6 +113,31 @@
       text-align: right;
       margin-top: 10px;
     }
+
+    /* Estilos para los componentes de gestión */
+    .dashboard {
+      margin-top: 30px;
+      padding: 20px;
+      background-color: white;
+      border-radius: 10px;
+    }
+
+    .form-group {
+      margin-bottom: 15px;
+      text-align: left;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 8px;
+      box-sizing: border-box;
+    }
   </style>
 </head>
 <body>
@@ -125,26 +150,54 @@
   <button id="login-btn">Iniciar sesión</button>
   <button id="logout-btn" style="display: none;">Cerrar sesión</button>
 
-  <!-- Catálogo -->
-  <div id="catalogo" class="productos" style="display: none;">
-    <!-- Los productos se cargarán dinámicamente -->
-  </div>
+  <div id="app-content" style="display: none;">
+    <!-- Catálogo -->
+    <div id="catalogo" class="productos">
+      <!-- Los productos se cargarán dinámicamente -->
+    </div>
 
-  <!-- Formulario de pedido -->
-  <div id="pedido-section">
-    <h2>Realizar Pedido</h2>
-    <form id="pedido-form">
-      <input type="text" id="nombre-cliente" placeholder="Tu nombre" required /><br />
-      <textarea id="direccion" placeholder="Dirección de entrega" required></textarea><br />
-      <button type="submit">Enviar Pedido</button>
-    </form>
-    <div id="resumen-pedido" class="resumen"></div>
-  </div>
+    <!-- Resumen del inventario -->
+    <div class="dashboard" id="inventory-dashboard">
+      <h2>Resumen de Inventario</h2>
+      <div id="inventory-summary"></div>
+    </div>
 
-  <div class="factura" id="factura">
-    <h2>Factura</h2>
-    <div id="factura-contenido"></div>
-    <button onclick="window.print()">Imprimir Factura</button>
+    <!-- Formulario para agregar productos -->
+    <div class="dashboard">
+      <h2>Agregar Nuevo Producto</h2>
+      <div class="form-group">
+        <label for="new-product-name">Nombre del producto:</label>
+        <input type="text" id="new-product-name" placeholder="Nombre del producto" />
+      </div>
+      <div class="form-group">
+        <label for="new-product-quantity">Cantidad en inventario:</label>
+        <input type="number" id="new-product-quantity" placeholder="Cantidad" />
+      </div>
+      <button id="add-product-btn">Agregar Producto</button>
+    </div>
+
+    <!-- Lista de productos con opciones de venta -->
+    <div class="dashboard">
+      <h2>Administrar Inventarios</h2>
+      <div id="product-list"></div>
+    </div>
+
+    <!-- Formulario de pedido -->
+    <div id="pedido-section">
+      <h2>Realizar Pedido</h2>
+      <form id="pedido-form">
+        <input type="text" id="nombre-cliente" placeholder="Tu nombre" required /><br />
+        <textarea id="direccion" placeholder="Dirección de entrega" required></textarea><br />
+        <button type="submit">Enviar Pedido</button>
+      </form>
+      <div id="resumen-pedido" class="resumen"></div>
+    </div>
+
+    <div class="factura" id="factura">
+      <h2>Factura</h2>
+      <div id="factura-contenido"></div>
+      <button onclick="window.print()">Imprimir Factura</button>
+    </div>
   </div>
 
   <script src="https://cdn.auth0.com/js/auth0-spa-js/1.13/auth0-spa-js.production.js"></script>
@@ -153,11 +206,13 @@
     let productos = [];
     let itemsPedido = new Map();
 
+    // Configuración de Auth0
     const config = {
       domain: "mi-licorera-auth.us.auth0.com",
       client_id: "3OvmR2j8x5KIgHICPQrk96vIV4WU1PvR"
     };
 
+    // Inicializar Auth0
     async function initAuth() {
       auth0Client = await createAuth0Client(config);
 
@@ -167,6 +222,7 @@
         const user = await auth0Client.getUser();
         showUser(user);
         cargarProductos();
+        fetchInventorySummary();
       } else {
         const query = window.location.search;
         if (query.includes("code=") && query.includes("state=")) {
@@ -175,53 +231,62 @@
           const user = await auth0Client.getUser();
           showUser(user);
           cargarProductos();
+          fetchInventorySummary();
         }
       }
     }
 
+    // Mostrar información del usuario
     function showUser(user) {
       document.getElementById("user-info").innerHTML = `<p>Hola, ${user.name}</p>`;
       document.getElementById("login-btn").style.display = "none";
       document.getElementById("logout-btn").style.display = "inline-block";
-      document.getElementById("catalogo").style.display = "grid";
-      document.getElementById("pedido-section").style.display = "block";
+      document.getElementById("app-content").style.display = "block";
     }
 
+    // Función para inicio de sesión
     async function login() {
       await auth0Client.loginWithRedirect({
         redirect_uri: window.location.origin
       });
     }
 
+    // Función para cierre de sesión
     async function logout() {
       auth0Client.logout({
         returnTo: window.location.origin
       });
     }
 
-    function cargarProductos() {
+    // Cargar productos desde el backend
+    async function cargarProductos() {
+      try {
+        const res = await fetch('/.netlify/functions/getProducts');
+        const data = await res.json();
+        productos = data.data.map(item => ({
+          id: item.ref['@ref'].id,
+          ...item.data
+        }));
+        renderProductos();
+      } catch (err) {
+        console.error("Error al cargar productos:", err);
+      }
+    }
+
+    // Renderizar productos en el catálogo
+    function renderProductos() {
       const catalogo = document.getElementById("catalogo");
       catalogo.innerHTML = "";
-
-      const productos = [
-        { id: 1, nombre: "Ladrillo 20-10", precio: 330, imagen: "https://placehold.co/250x200?text=Ladrillo+20-10" },
-        { id: 2, nombre: "Ladrillo 22-12", precio: 450, imagen: "https://placehold.co/250x200?text=Ladrillo+22-12" },
-        { id: 3, nombre: "Bloque No 4", precio: 830, imagen: "https://placehold.co/250x200?text=Bloque+No+4" },
-        { id: 4, nombre: "Bloque No 5", precio: 900, imagen: "https://placehold.co/250x200?text=Bloque+No+5" },
-        { id: 5, nombre: "Blocklon", precio: 5000, imagen: "https://placehold.co/250x200?text=Blocklon" },
-        { id: 6, nombre: "Regilla", precio: 700, imagen: "https://placehold.co/250x200?text=Regilla" },
-        { id: 7, nombre: "Adoquin", precio: 650, imagen: "https://placehold.co/250x200?text=Adoquin" },
-        { id: 8, nombre: "Tableta CUC", precio: 24000, imagen: "https://placehold.co/250x200?text=Tableta+CUC" },
-        { id: 9, nombre: "Teja Española", precio: 700, imagen: "https://placehold.co/250x200?text=Teja+Española" }
-      ];
+      const productList = document.getElementById("product-list");
+      productList.innerHTML = "";
 
       productos.forEach(producto => {
+        // Renderizar en el catálogo
         const divProducto = document.createElement("div");
         divProducto.className = "producto";
         divProducto.innerHTML = `
-          <img src="${producto.imagen}" alt="${producto.nombre}">
-          <h3>${producto.nombre}</h3>
-          <p class="precio">$${producto.precio.toLocaleString()}</p>
+          <h3>${producto.name}</h3>
+          <p class="precio">$${producto.price.toLocaleString()}</p>
           <label>
             <input type="number" min="0" value="0" data-id="${producto.id}" placeholder="Cantidad" class="pedido-item" />
             Cantidad
@@ -229,9 +294,25 @@
           <button onclick="agregarAlPedido(${producto.id})">Agregar al pedido</button>
         `;
         catalogo.appendChild(divProducto);
+
+        // Renderizar en la lista de administración
+        const productDiv = document.createElement("div");
+        productDiv.style.margin = "16px 0";
+        productDiv.innerHTML = `
+          <strong>${producto.name}</strong> - En inventario: ${producto.quantity || 0} - Vendidos: ${producto.sold || 0}
+          <input
+            type="number"
+            value="${producto.sellQty || ''}"
+            placeholder="Cantidad a vender"
+            style="margin: 0 8px"
+          />
+          <button onclick="venderProducto(${producto.id})">Vender</button>
+        `;
+        productList.appendChild(productDiv);
       });
     }
 
+    // Agregar producto al pedido
     function agregarAlPedido(id) {
       const input = document.querySelector(`input[data-id="${id}"]`);
       const cantidad = parseInt(input.value);
@@ -245,6 +326,46 @@
       }
     }
 
+    // Vender producto desde el inventario
+    async function venderProducto(id) {
+      const input = document.querySelector(`input[data-id="${id}"]`);
+      const cantidad = parseInt(input.value);
+      if (cantidad > 0) {
+        try {
+          await fetch('/.netlify/functions/sellProduct', {
+            method: 'POST',
+            body: JSON.stringify({ id, soldQty: cantidad })
+          });
+          fetchInventorySummary();
+          cargarProductos();
+        } catch (err) {
+          console.error("Error al vender producto:", err);
+        }
+      }
+    }
+
+    // Agregar nuevo producto
+    async function addNewProduct() {
+      const name = document.getElementById("new-product-name").value;
+      const quantity = parseInt(document.getElementById("new-product-quantity").value);
+      
+      if (name && quantity) {
+        try {
+          await fetch('/.netlify/functions/addProduct', {
+            method: 'POST',
+            body: JSON.stringify({ name, quantity })
+          });
+          document.getElementById("new-product-name").value = "";
+          document.getElementById("new-product-quantity").value = "";
+          cargarProductos();
+          fetchInventorySummary();
+        } catch (err) {
+          console.error("Error al agregar producto:", err);
+        }
+      }
+    }
+
+    // Mostrar formulario de pedido
     document.getElementById("pedido-form").addEventListener("submit", function (e) {
       e.preventDefault();
 
@@ -258,7 +379,7 @@
 
       let total = 0;
       itemsPedido.forEach(item => {
-        total += item.producto.precio * item.cantidad;
+        total += item.producto.price * item.cantidad;
       });
 
       // Calculo IVA (19%)
@@ -269,6 +390,7 @@
       mostrarFactura(nombre, direccion, total, iva, totalConIva);
     });
 
+    // Mostrar factura
     function mostrarFactura(nombre, direccion, total, iva, totalConIva) {
       const facturaContenido = document.getElementById("factura-contenido");
       facturaContenido.innerHTML = `
@@ -294,10 +416,10 @@
           <tbody>
             ${Array.from(itemsPedido.values()).map(item => `
               <tr>
-                <td>${item.producto.nombre}</td>
+                <td>${item.producto.name}</td>
                 <td>${item.cantidad}</td>
-                <td>$${item.producto.precio.toLocaleString()}</td>
-                <td>$${(item.producto.precio * item.cantidad).toLocaleString()}</td>
+                <td>$${item.producto.price.toLocaleString()}</td>
+                <td>$${(item.producto.price * item.cantidad).toLocaleString()}</td>
               </tr>
             `).join('')}
           </tbody>
@@ -321,10 +443,34 @@
       document.getElementById("factura").style.display = "block";
     }
 
+    // Obtener resumen del inventario
+    async function fetchInventorySummary() {
+      try {
+        const res = await fetch('/.netlify/functions/getProducts');
+        const data = await res.json();
+        const products = data.data.map(item => ({
+          id: item.ref['@ref'].id,
+          ...item.data
+        }));
+        
+        const totalIn = products.reduce((sum, p) => sum + (p.quantity + (p.sold || 0)), 0);
+        const totalSold = products.reduce((sum, p) => sum + (p.sold || 0), 0);
+        
+        document.getElementById("inventory-summary").innerHTML = `
+          <p>Total de productos en inventario: ${totalIn}</p>
+          <p>Total de productos vendidos: ${totalSold}</p>
+        `;
+      } catch (err) {
+        console.error("Error al cargar resumen del inventario:", err);
+      }
+    }
+
+    // Eventos
     window.onload = () => {
       initAuth();
       document.getElementById("login-btn").addEventListener("click", login);
       document.getElementById("logout-btn").addEventListener("click", logout);
+      document.getElementById("add-product-btn").addEventListener("click", addNewProduct);
     };
   </script>
 </body>
